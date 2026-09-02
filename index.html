@@ -6,6 +6,49 @@
 <title>විශේෂ අධ්‍යාපන අවශ්‍යතා තක්සේරු වාර්තාව</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Sinhala:wght@400;500;600;700&family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- PWA / Add-to-Home-Screen hints -->
+<meta name="theme-color" content="#1b3d8f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SEN තක්සේරුව">
+<link rel="apple-touch-icon" id="appleTouchIcon">
+<script>
+(function(){
+  // Build a small inline icon + manifest at runtime so this stays a single-file app.
+  var iconSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">'
+    + '<rect width="192" height="192" rx="32" fill="%231b3d8f"/>'
+    + '<rect x="34" y="30" width="124" height="132" rx="10" fill="%23f4f7fc"/>'
+    + '<rect x="50" y="52" width="92" height="10" rx="4" fill="%231b3d8f"/>'
+    + '<rect x="50" y="76" width="92" height="10" rx="4" fill="%23f2a33d"/>'
+    + '<rect x="50" y="100" width="60" height="10" rx="4" fill="%231b3d8f"/>'
+    + '<circle cx="96" cy="140" r="14" fill="%232f9e4f"/>'
+    + '</svg>';
+  var iconUri = 'data:image/svg+xml,' + iconSvg;
+  document.getElementById('appleTouchIcon').setAttribute('href', iconUri);
+
+  var manifest = {
+    name: "විශේෂ අධ්‍යාපන අවශ්‍යතා තක්සේරු වාර්තාව",
+    short_name: "SEN තක්සේරුව",
+    start_url: ".",
+    scope: ".",
+    display: "standalone",
+    background_color: "#f4f7fc",
+    theme_color: "#1b3d8f",
+    icons: [
+      { src: iconUri, sizes: "192x192", type: "image/svg+xml" },
+      { src: iconUri, sizes: "512x512", type: "image/svg+xml" }
+    ]
+  };
+  try{
+    var blob = new Blob([JSON.stringify(manifest)], {type: 'application/json'});
+    var link = document.createElement('link');
+    link.rel = 'manifest';
+    link.href = URL.createObjectURL(blob);
+    document.head.appendChild(link);
+  }catch(e){ /* manifest is a progressive enhancement — safe to ignore failures */ }
+})();
+</script>
 <style>
   :root{
     --ink:#152238;
@@ -244,6 +287,42 @@
     .top-banner{max-height:130px;}
     .a11y-bar{justify-content:center; flex-wrap:wrap;}
   }
+
+  /* ---------- Install / Add-shortcut floating button ---------- */
+  .fab-install{
+    position:fixed; bottom:24px; right:24px; z-index:999;
+    display:flex; align-items:center; gap:8px;
+    background:var(--amber); color:#1a1206; border:none; border-radius:30px;
+    padding:12px 18px; font-family:'Noto Sans Sinhala','Inter',sans-serif;
+    font-size:13.5px; font-weight:600; box-shadow:0 4px 14px rgba(15,33,88,.35);
+    cursor:pointer; transition:transform .15s ease, box-shadow .15s ease, background .15s ease;
+  }
+  .fab-install:hover{background:#e0913a; transform:translateY(-2px); box-shadow:0 7px 20px rgba(15,33,88,.4);}
+  .fab-install:active{transform:translateY(0);}
+  .fab-install svg{width:18px; height:18px; flex-shrink:0;}
+  .fab-install.hidden{display:none !important;}
+  @media (max-width:860px){
+    .fab-install{bottom:18px; right:18px; padding:12px; border-radius:50%;}
+    .fab-install .fab-label{display:none;}
+  }
+  @media print{ .fab-install, .install-modal-overlay{display:none !important;} }
+
+  .install-modal-overlay{
+    position:fixed; inset:0; background:rgba(15,33,88,.55); z-index:1000;
+    display:none; align-items:center; justify-content:center; padding:20px;
+  }
+  .install-modal-overlay.show{display:flex;}
+  .install-modal{
+    background:#fff; border-radius:12px; max-width:400px; width:100%;
+    padding:24px 26px; box-shadow:0 14px 44px rgba(0,0,0,.3);
+  }
+  .install-modal h3{margin:0 0 12px; font-size:16px; color:var(--navy-deep);}
+  .install-modal ol{margin:0 0 18px; padding-left:20px; font-size:13px; line-height:1.8; color:var(--ink);}
+  .install-modal .close-modal-btn{
+    width:100%; padding:10px; border-radius:6px; border:none; background:var(--navy);
+    color:#fff; font-weight:600; cursor:pointer; font-family:inherit; font-size:13.5px;
+  }
+  .install-modal .close-modal-btn:hover{background:var(--navy-deep);}
 </style>
 </head>
 <body>
@@ -312,6 +391,20 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- Floating "add to home screen / desktop" shortcut button -->
+<button class="fab-install hidden" id="installFab" title="උපාංගයට එකතු කරන්න (Add shortcut)">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v13"/><path d="M7 11l5 5 5-5"/><path d="M5 21h14"/></svg>
+  <span class="fab-label">උපාංගයට එකතු කරන්න</span>
+</button>
+
+<div class="install-modal-overlay" id="installModalOverlay">
+  <div class="install-modal">
+    <h3>මුල් තිරයට / ඩෙස්ක්ටොප් එකට එකතු කරන්නේ කෙසේද?</h3>
+    <div id="installInstructionsBody"></div>
+    <button class="close-modal-btn" id="closeInstallModal">තේරුණා</button>
+  </div>
+</div>
 
 <!-- Firebase SDK (compat build — simplest to drop into a plain script tag app) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -1934,6 +2027,90 @@ async function deleteData(){
     scale = 1;
     apply();
   });
+})();
+
+/* =========================================================
+   ADD TO HOME SCREEN / DESKTOP SHORTCUT (floating button)
+   ========================================================= */
+(function(){
+  const fab = document.getElementById('installFab');
+  const overlay = document.getElementById('installModalOverlay');
+  const instrBody = document.getElementById('installInstructionsBody');
+  const closeBtn = document.getElementById('closeInstallModal');
+  if(!fab || !overlay || !instrBody || !closeBtn) return;
+
+  let deferredPrompt = null;
+
+  function isStandalone(){
+    return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+      || window.navigator.standalone === true;
+  }
+
+  function platform(){
+    const ua = navigator.userAgent || '';
+    return {
+      isIOS: /iPad|iPhone|iPod/.test(ua) && !window.MSStream,
+      isAndroid: /Android/.test(ua)
+    };
+  }
+
+  function showFab(){
+    if(!isStandalone()) fab.classList.remove('hidden');
+  }
+
+  // Chrome/Edge/Android: native install prompt becomes available
+  window.addEventListener('beforeinstallprompt', (e)=>{
+    e.preventDefault();
+    deferredPrompt = e;
+    showFab();
+  });
+
+  window.addEventListener('appinstalled', ()=>{
+    fab.classList.add('hidden');
+    deferredPrompt = null;
+    showToast('උපාංගයට එකතු කරන ලදී — Added to device');
+  });
+
+  // Browsers without beforeinstallprompt (iOS Safari, some desktop browsers)
+  // still get the button, with manual instructions on click.
+  setTimeout(showFab, 1000);
+
+  fab.addEventListener('click', async ()=>{
+    if(deferredPrompt){
+      deferredPrompt.prompt();
+      try{
+        const { outcome } = await deferredPrompt.userChoice;
+        if(outcome === 'accepted') showToast('ස්ථාපනය සාර්ථකයි — Installed');
+      }catch(e){ /* ignore */ }
+      deferredPrompt = null;
+      return;
+    }
+    const { isIOS, isAndroid } = platform();
+    let html;
+    if(isIOS){
+      html = '<ol>'
+        + '<li>පහළින් Share (⬆️) බොත්තම ඔබන්න.</li>'
+        + '<li>“Add to Home Screen” තෝරන්න.</li>'
+        + '<li>“Add” ඔබා තහවුරු කරන්න.</li>'
+        + '</ol>';
+    } else if(isAndroid){
+      html = '<ol>'
+        + '<li>ඉහළ දකුණේ ⋮ මෙනුව ඔබන්න.</li>'
+        + '<li>“Add to Home screen” හෝ “Install app” තෝරන්න.</li>'
+        + '<li>“Add” / “Install” ඔබා තහවුරු කරන්න.</li>'
+        + '</ol>';
+    } else {
+      html = '<ol>'
+        + '<li>Address bar හි ⤓ Install අයිකනය ඔබන්න (නැතිනම් ⋮ මෙනුවෙන් “Install…” තෝරන්න).</li>'
+        + '<li>“Install” ඔබා තහවුරු කරන්න — Desktop shortcut එකක් සෑදෙනු ඇත.</li>'
+        + '</ol>';
+    }
+    instrBody.innerHTML = html;
+    overlay.classList.add('show');
+  });
+
+  closeBtn.addEventListener('click', ()=> overlay.classList.remove('show'));
+  overlay.addEventListener('click', (e)=>{ if(e.target === overlay) overlay.classList.remove('show'); });
 })();
 
 renderAll();
