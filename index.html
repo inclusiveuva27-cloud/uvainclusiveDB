@@ -1481,6 +1481,7 @@ function renderAll(){
    ========================================================= */
 let caseId = localStorage.getItem('lastCaseId') || '';
 let caseIdManual = false; // becomes true once the user types directly into the Case ID box
+let lastPersistedId = null; // the Firestore doc id this case is CURRENTLY saved under (null = not saved yet)
 
 function slugifyId(s){
   return (s||'').toString().trim()
@@ -1546,13 +1547,26 @@ function currentCaseId(){
 function persistActiveCase(){
   const id = document.getElementById('caseIdInput').value.trim();
   if(!id) return Promise.resolve();
+  const previousId = lastPersistedId; // id this same case is currently sitting under, if any
   caseId = id;
   state.id = id;
   state._updatedAt = new Date().toISOString();
   const idx = allCases.findIndex(c=>c.id===id);
   if(idx>=0) allCases[idx] = state; else allCases.unshift(state);
   casesLoaded = true;
-  return saveCaseToFirestore(state);
+  let p = saveCaseToFirestore(state);
+  // The Case ID is rebuilt live from name/school/grade while you type, so it
+  // changes several times while filling the form. Without this, every time
+  // it changed we'd save a NEW document and leave the old one behind — which
+  // is why the case list used to fill up with partial-name duplicates.
+  // Instead: once the new id is safely saved, remove the stale one.
+  if(previousId && previousId !== id){
+    p = p.then(()=>deleteCaseFromFirestore(previousId)).then(()=>{
+      allCases = allCases.filter(c=>c.id!==previousId);
+    }).catch(e=>console.error('cleanup of stale case id failed', e));
+  }
+  lastPersistedId = id;
+  return p;
 }
 function debounce(fn, wait){
   let t;
@@ -1609,6 +1623,7 @@ async function loadState(){
     state = { id, ...data };
     caseId = id;
     caseIdManual = true; // keep this exact ID fixed now that a real case is loaded
+    lastPersistedId = id; // this case already lives under this id in Firestore
     showToast('පූර්ව දත්ත පූරණය විය — Loaded');
   } else {
     showToast('No case with that ID found — starting fresh.');
@@ -1631,6 +1646,7 @@ document.getElementById('btnNew').addEventListener('click', ()=>{
     state = { student:{}, siblings:[{},{},{},{},{}], scores:{}, committee:[{},{},{},{},{}], notes:{referral:"",recommendation:""}, sched05:{scores:{},notes:{referral:"",recommendation:""}}, sched06:{scores:{},header:{},notes:{referral:"",recommendation:""}}, sched07:{scores:{},header:{},notes:{referral:"",recommendation:""}}, sched08:{scores:{},notes:{referral:"",recommendation:""}}, selectedScheds:{sched05:false,sched06:false,sched07:false,sched08:false} };
     caseIdManual = false;
     caseId = genRandomId();
+    lastPersistedId = null; // fresh case, nothing saved under this id yet
     localStorage.setItem('lastCaseId', caseId);
     currentView = "student";
     renderAll();
@@ -1729,6 +1745,7 @@ async function deleteData(){
   state = { student:{}, siblings:[{},{},{},{},{}], scores:{}, committee:[{},{},{},{},{}], notes:{referral:"",recommendation:""}, sched05:{scores:{},notes:{referral:"",recommendation:""}}, sched06:{scores:{},header:{},notes:{referral:"",recommendation:""}}, sched07:{scores:{},header:{},notes:{referral:"",recommendation:""}}, sched08:{scores:{},notes:{referral:"",recommendation:""}}, selectedScheds:{sched05:false,sched06:false,sched07:false,sched08:false} };
   caseIdManual = false;
   caseId = genRandomId();
+  lastPersistedId = null; // deleted, so nothing is saved under this id anymore
   localStorage.setItem('lastCaseId', caseId);
   currentView = "student";
   renderAll();
