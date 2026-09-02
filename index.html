@@ -70,6 +70,7 @@
   }
   .sync-dot { width: 7px; height: 7px; border-radius: 50%; background: #2f9e4f; }
   .sync-dot.saving { background: var(--amber); animation: pulse 1s infinite; }
+  .sync-dot.error { background: var(--red); }
   @keyframes pulse { 0% { opacity: 0.3; } 50% { opacity: 1; } 100% { opacity: 0.3; } }
 
   /* Layout shell */
@@ -161,7 +162,7 @@
   }
   .toast.show { opacity: 1; transform: translateY(0); }
 
-  @media print { .rail, .toast { display: none !important; } main { max-width: 100%; padding: 0; } }
+  @media print { .rail, .toast, .top-banner, .a11y-bar { display: none !important; } main { max-width: 100%; padding: 0; } }
   @media (max-width: 860px) {
     .app { flex-direction: column; }
     .rail { position: relative; height: auto; width: 100%; }
@@ -198,17 +199,14 @@
 
   let currentDocId = null;
 
-  // Real-time Auto Save logic with Upsert (Create or Update)
   window.saveToFirebaseRealtime = async function(data) {
     try {
       if (!currentDocId) {
-        // Document එක නැත්නම් අලුතෙන් Create කරයි
         const colRef = collection(db, "uva_inclusive_assessments");
         const docRef = await addDoc(colRef, { ...data, createdAt: new Date().toISOString() });
         currentDocId = docRef.id;
         return { success: true, id: currentDocId, mode: 'created' };
       } else {
-        // Document එක තිබේ නම් Realtime Update කරයි
         const docRef = doc(db, "uva_inclusive_assessments", currentDocId);
         await setDoc(docRef, { ...data, updatedAt: new Date().toISOString() }, { merge: true });
         return { success: true, id: currentDocId, mode: 'updated' };
@@ -477,19 +475,15 @@
     }
   }
 
-  // Real-Time Debounce Auto Save Engine
   let autoSaveTimer = null;
 
   function scheduleAutoSave() {
-    const syncDot = document.getElementById('syncDot');
-    const syncText = document.getElementById('syncText');
-    syncDot.classList.add('saving');
-    syncText.innerText = 'සුරකිමින්...';
+    setSyncStatus('සුරකිමින්...', true);
 
     clearTimeout(autoSaveTimer);
     autoSaveTimer = setTimeout(() => {
       triggerAutoSave(false);
-    }, 1000); // Input නවතා තත්පර 1 කින් auto-save වේ
+    }, 1000);
   }
 
   async function triggerAutoSave(isManual = false) {
@@ -504,7 +498,6 @@
       scores: scores
     };
 
-    // අවම වශයෙන් ශිෂ්‍ය නමවත් ඇතුළත් කර ඇත්නම් පමණක් auto-save කරයි
     if (!payload.studentName.trim() && !isManual) {
       setSyncStatus('සූදානම්', false);
       return;
@@ -516,19 +509,22 @@
         setSyncStatus('සුරැකිණි', false);
         if (isManual) showToast("දත්ත සාර්ථකව Firestore හි සුරක්‍ෂිත කරන ලදී!");
       } else {
-        setSyncStatus('දෝෂයක්', false);
+        setSyncStatus('දෝෂයක්', false, true);
+        if (isManual) showToast("දත්ත සුරැකීමට අපොහොසත් විය: " + res.error);
       }
     }
   }
 
-  function setSyncStatus(text, isSaving) {
+  function setSyncStatus(text, isSaving, isError = false) {
     const syncDot = document.getElementById('syncDot');
     const syncText = document.getElementById('syncText');
     syncText.innerText = text;
+    
+    syncDot.className = 'sync-dot';
     if (isSaving) {
       syncDot.classList.add('saving');
-    } else {
-      syncDot.classList.remove('saving');
+    } else if (isError) {
+      syncDot.classList.add('error');
     }
   }
 
