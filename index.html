@@ -838,6 +838,7 @@ function renderMain(){
   if(currentView === 'student'){ main.innerHTML = viewStudent(); bindStudent(); }
   else if(currentView === 'summary'){ main.innerHTML = viewSummary(); bindSummary(); }
   else if(currentView === 'cases'){ main.innerHTML = viewCases(); bindCases(); }
+  else if(currentView === 'cleanup'){ main.innerHTML = viewCleanup(); bindCleanup(); }
   else if(currentView === 'sched05'){ main.innerHTML = viewSchedForm(SCHED05); bindSchedForm(SCHED05); }
   else if(currentView === 'sched06'){ main.innerHTML = viewSchedForm(SCHED06); bindSchedForm(SCHED06); }
   else if(currentView === 'sched07'){ main.innerHTML = viewSchedForm(SCHED07); bindSchedForm(SCHED07); }
@@ -1295,10 +1296,130 @@ function viewCases(){
       </div>
       <button class="filter-reset" id="cf_reset">Reset</button>
       <button class="filter-reset" id="cf_refresh">↻ Refresh</button>
+      <button class="filter-reset" id="cf_cleanup" style="border-color:var(--red); color:var(--red);">🧹 Find duplicate drafts</button>
     </div>
     <div class="case-count">${casesLoaded ? results.length + ' of ' + allCases.length + ' cases' : ''}</div>
     ${table}
   </div>`;
+}
+
+/* =========================================================
+   DUPLICATE-DRAFT CLEANUP
+   These are the leftover stub cases created while typing a
+   student's name/school (each pause used to save a new Firestore
+   doc under the partial text as the Case ID). This groups cases
+   whose name/school look like earlier typing-stages of another
+   case, and lets you review + delete the stubs in one go.
+   ========================================================= */
+function normKey(s){ return (s||'').toString().trim().toLowerCase(); }
+function related(a, b){
+  if(!a || !b) return true; // an empty value never rules out a match
+  return a === b || a.startsWith(b) || b.startsWith(a);
+}
+function computeDuplicateClusters(){
+  const items = allCases.map(c=>({
+    id: c.id,
+    name: (c.student && c.student.name) || '',
+    school: (c.student && c.student.school) || '',
+    pct: casePct(c),
+    score: caseScore(c),
+    updatedAt: c._updatedAt || ''
+  }));
+  const n = items.length;
+  const parent = items.map((_,i)=>i);
+  function find(x){ while(parent[x]!==x){ parent[x]=parent[parent[x]]; x=parent[x]; } return x; }
+  function union(x,y){ const rx=find(x), ry=find(y); if(rx!==ry) parent[rx]=ry; }
+  for(let i=0;i<n;i++){
+    for(let j=i+1;j<n;j++){
+      const nameA = normKey(items[i].name), nameB = normKey(items[j].name);
+      if(!nameA && !nameB) continue; // two blank-name stubs aren't obviously related
+      if(related(nameA, nameB) && related(normKey(items[i].school), normKey(items[j].school))){
+        union(i,j);
+      }
+    }
+  }
+  const groups = {};
+  items.forEach((it,i)=>{ const r=find(i); (groups[r]=groups[r]||[]).push(it); });
+  return Object.values(groups)
+    .filter(g=>g.length>1)
+    .map(g=>{
+      const sorted = [...g].sort((a,b)=>{
+        if(b.score !== a.score) return b.score - a.score;
+        if(b.updatedAt !== a.updatedAt) return b.updatedAt.localeCompare(a.updatedAt);
+        return b.name.length - a.name.length;
+      });
+      const keep = sorted[0];
+      const rest = sorted.slice(1);
+      return { keep, items: rest };
+    })
+    .sort((a,b)=> (a.keep.name||'').localeCompare(b.keep.name||''));
+}
+
+function viewCleanup(){
+  const clusters = computeDuplicateClusters();
+  if(clusters.length===0){
+    return `
+    <div class="crumb">සියලු වාර්තා</div>
+    <div class="panel-title">Duplicate drafts</div>
+    <div class="panel-sub">No likely duplicate stubs found — the list looks clean.</div>
+    <div class="card"><button class="filter-reset" id="cu_back">← Back to case list</button></div>`;
+  }
+  const groupsHtml = clusters.map((cl, gi)=>{
+    const keepRow = `<div class="item-row" style="background:#eef7ee;">
+        <div style="flex:1;">
+          <strong>${cl.keep.name || '—'}</strong> — ${cl.keep.school || '—'}
+          <span class="mono" style="font-size:11px; color:var(--grey);"> · ${cl.keep.id}</span>
+        </div>
+        <div class="mono" style="font-size:12px;">${cl.keep.score} / ${GRAND_MAX}</div>
+        <div style="font-size:11.5px; color:var(--teal); font-weight:600;">KEEP</div>
+      </div>`;
+    const removeRows = cl.items.map((it,ii)=>{
+      const checkedDefault = it.score===0; // only pre-check zero-score stubs, never nonzero data
+      return `<div class="item-row">
+        <input type="checkbox" class="cu-check" data-group="${gi}" data-id="${it.id}" ${checkedDefault?'checked':''} style="width:auto; margin-right:4px;">
+        <div style="flex:1;">
+          ${it.name || '—'} — ${it.school || '—'}
+          <span class="mono" style="font-size:11px; color:var(--grey);"> · ${it.id}</span>
+        </div>
+        <div class="mono" style="font-size:12px; ${it.score>0?'color:var(--red); font-weight:700;':''}">${it.score} / ${GRAND_MAX}${it.score>0?' ⚠':''}</div>
+      </div>`;
+    }).join('');
+    return `<div class="card">
+      ${keepRow}
+      ${removeRows}
+    </div>`;
+  }).join('');
+
+  return `
+  <div class="crumb">සියලු වාර්තා</div>
+  <div class="panel-title">Duplicate drafts</div>
+  <div class="panel-sub">Found ${clusters.length} group(s) of likely duplicates. The greyed KEEP row stays; check the ones below it that you want deleted. Rows marked ⚠ have real score data — double-check before deleting those.</div>
+  <div style="display:flex; gap:10px; margin-bottom:16px;">
+    <button class="filter-reset" id="cu_back">← Back to case list</button>
+    <button class="rail-btn primary" id="cu_delete" style="flex:none; padding:8px 18px;">Delete checked</button>
+  </div>
+  ${groupsHtml}`;
+}
+
+function bindCleanup(){
+  const back = document.getElementById('cu_back');
+  if(back) back.addEventListener('click', ()=>{ currentView='cases'; renderAll(); });
+  const del = document.getElementById('cu_delete');
+  if(del) del.addEventListener('click', async ()=>{
+    const ids = Array.from(document.querySelectorAll('.cu-check:checked')).map(el=>el.dataset.id);
+    if(ids.length===0){ showToast('Nothing checked.'); return; }
+    if(!confirm('Permanently delete ' + ids.length + ' duplicate draft(s)? This cannot be undone.')) return;
+    showToast('Deleting ' + ids.length + ' draft(s)...');
+    let failed = 0;
+    for(const id of ids){
+      try{ await deleteCaseFromFirestore(id); }
+      catch(e){ console.error('failed to delete', id, e); failed++; }
+    }
+    allCases = allCases.filter(c=>!ids.includes(c.id));
+    showToast(failed ? (ids.length-failed)+' deleted, '+failed+' failed' : ids.length + ' duplicate(s) deleted');
+    currentView = 'cases';
+    renderAll();
+  });
 }
 
 function bindCases(){
@@ -1324,6 +1445,8 @@ function bindCases(){
     renderMain();
   });
   if(refresh) refresh.addEventListener('click', ()=>{ casesLoaded = false; fetchAllCases(); });
+  const cleanup = document.getElementById('cf_cleanup');
+  if(cleanup) cleanup.addEventListener('click', ()=>{ currentView = 'cleanup'; renderAll(); });
 
   document.querySelectorAll('.case-table tbody tr').forEach(tr=>{
     tr.addEventListener('click', ()=>{
