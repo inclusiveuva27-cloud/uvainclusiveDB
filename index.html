@@ -323,6 +323,56 @@
     color:#fff; font-weight:600; cursor:pointer; font-family:inherit; font-size:13.5px;
   }
   .install-modal .close-modal-btn:hover{background:var(--navy-deep);}
+
+  /* ---------- Auth gate (login / first-time admin setup) ---------- */
+  #authGate{
+    position:fixed; inset:0; background:linear-gradient(160deg,var(--navy-deep),var(--navy));
+    z-index:2000; display:flex; align-items:center; justify-content:center; padding:20px;
+  }
+  #authGate.hidden{display:none;}
+  .auth-card{
+    background:#fff; border-radius:14px; max-width:380px; width:100%;
+    padding:30px 28px; box-shadow:0 20px 60px rgba(0,0,0,.35);
+  }
+  .auth-card h2{margin:0 0 4px; font-size:18px; color:var(--navy-deep);}
+  .auth-card p.sub{margin:0 0 20px; font-size:12.5px; color:var(--grey);}
+  .auth-card .field{margin-bottom:14px;}
+  .auth-card .field label{font-size:12px; color:var(--grey); font-weight:600; display:block; margin-bottom:5px;}
+  .auth-card .field input{
+    width:100%; font-family:inherit; font-size:14px; padding:10px 11px;
+    border:1px solid var(--line); border-radius:6px; background:#fdfcf9; color:var(--ink);
+  }
+  .auth-card .field input:focus{outline:2px solid var(--amber); outline-offset:1px; border-color:var(--amber);}
+  .auth-card button.auth-submit{
+    width:100%; padding:11px; border-radius:6px; border:none; background:var(--amber);
+    color:#1a1206; font-weight:700; cursor:pointer; font-family:inherit; font-size:14px; margin-top:4px;
+  }
+  .auth-card button.auth-submit:hover{background:#e0913a;}
+  .auth-card button.auth-submit:disabled{opacity:.6; cursor:not-allowed;}
+  .auth-card .auth-error{color:var(--red); font-size:12.5px; margin:0 0 12px; display:none;}
+  .auth-card .auth-error.show{display:block;}
+  .auth-card .auth-footnote{font-size:11px; color:var(--grey); text-align:center; margin-top:16px; line-height:1.5;}
+
+  /* ---------- User management panel (admin only) ---------- */
+  .um-overlay{
+    position:fixed; inset:0; background:rgba(15,33,88,.55); z-index:1500;
+    display:none; align-items:center; justify-content:center; padding:20px;
+  }
+  .um-overlay.show{display:flex;}
+  .um-modal{
+    background:#fff; border-radius:12px; max-width:480px; width:100%; max-height:86vh; overflow-y:auto;
+    padding:24px 26px; box-shadow:0 14px 44px rgba(0,0,0,.3);
+  }
+  .um-modal h3{margin:0 0 16px; font-size:16px; color:var(--navy-deep);}
+  .um-list{list-style:none; margin:0 0 18px; padding:0; border:1px solid var(--line); border-radius:8px; overflow:hidden;}
+  .um-list li{display:flex; justify-content:space-between; align-items:center; padding:9px 12px; font-size:13px; border-bottom:1px solid var(--line);}
+  .um-list li:last-child{border-bottom:none;}
+  .um-list .role-badge{font-family:'Space Mono',monospace; font-size:10px; padding:2px 7px; border-radius:10px; background:var(--amber-soft); color:#7a4b12;}
+  .um-list .role-badge.admin{background:#e6ddf6; color:var(--purple);}
+  .um-modal .close-modal-btn{
+    width:100%; padding:10px; border-radius:6px; border:none; background:var(--grey);
+    color:#fff; font-weight:600; cursor:pointer; font-family:inherit; font-size:13.5px; margin-top:6px;
+  }
 </style>
 </head>
 <body>
@@ -338,7 +388,7 @@
     <button class="fs-btn" id="fsPlus" title="Increase font size">A+</button>
   </div>
 </div>
-<div class="app">
+<div class="app" style="display:none;">
 
   <!-- ============ SIDE RAIL ============ -->
   <aside class="rail">
@@ -379,7 +429,12 @@
       <button class="rail-btn" id="btnSave">සුරකින්න</button>
       <button class="rail-btn primary" id="btnReport">වාර්තාව (PDF)</button>
       <button class="rail-btn" id="btnNew">නව</button>
-      <button class="rail-btn" id="btnDelete" style="border-color:var(--red); color:#f2c9c2;">මකන්න</button>
+      <button class="rail-btn" id="btnDelete" style="border-color:var(--red); color:#f2c9c2; display:none;">මකන්න</button>
+    </div>
+    <div style="padding:10px 18px; border-top:1px solid rgba(255,255,255,0.08); display:flex; flex-direction:column; gap:6px;">
+      <div id="currentUserLabel" style="font-size:11px; color:#cfc9ba; text-align:center; word-break:break-all;"></div>
+      <button class="rail-outline-btn" id="btnManageUsers" style="display:none; padding:7px; font-size:11.5px;">පරිශීලක කළමනාකරණය</button>
+      <button class="rail-outline-btn" id="btnLogout" style="padding:7px; font-size:11.5px;">Logout</button>
     </div>
     <div style="padding:10px 18px 16px; border-top:1px solid rgba(255,255,255,0.08); font-size:10.5px; line-height:1.5; color:#a9a291; text-align:center;">
       නිර්මාණය: R.M.S. Chamalka<br>B/Denzil Kobbekaduwa Maha Vidyalaya, Haliela
@@ -406,9 +461,79 @@
   </div>
 </div>
 
+<!-- ============ AUTH GATE (login / first-time admin setup) ============ -->
+<div id="authGate">
+  <div class="auth-card">
+    <div id="authLoginView">
+      <h2>පිවිසෙන්න</h2>
+      <p class="sub">Sign in to continue — Special Education Assessment System</p>
+      <p class="auth-error" id="loginError"></p>
+      <div class="field">
+        <label>විද්‍යුත් තැපෑල (Email)</label>
+        <input type="email" id="loginEmail" autocomplete="username">
+      </div>
+      <div class="field">
+        <label>මුරපදය (Password)</label>
+        <input type="password" id="loginPassword" autocomplete="current-password">
+      </div>
+      <button class="auth-submit" id="btnLoginSubmit">පිවිසෙන්න / Sign in</button>
+      <p class="auth-footnote">Accounts are created by your administrator. Contact them if you don't have a login.</p>
+    </div>
+    <div id="authSetupView" style="display:none;">
+      <h2>මුල් Admin ගිණුම සාදන්න</h2>
+      <p class="sub">No accounts exist yet — set up the first administrator account for this system.</p>
+      <p class="auth-error" id="setupError"></p>
+      <div class="field">
+        <label>නම (Name)</label>
+        <input type="text" id="setupName" autocomplete="name">
+      </div>
+      <div class="field">
+        <label>විද්‍යුත් තැපෑල (Email)</label>
+        <input type="email" id="setupEmail" autocomplete="username">
+      </div>
+      <div class="field">
+        <label>මුරපදය (Password, min 6 characters)</label>
+        <input type="password" id="setupPassword" autocomplete="new-password">
+      </div>
+      <button class="auth-submit" id="btnSetupSubmit">Admin ගිණුම සාදන්න</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ USER MANAGEMENT MODAL (admin only) ============ -->
+<div class="um-overlay" id="umOverlay">
+  <div class="um-modal">
+    <h3>පරිශීලක කළමනාකරණය (User Management)</h3>
+    <ul class="um-list" id="umList"></ul>
+    <p class="auth-error" id="umError"></p>
+    <div class="field">
+      <label>නම (Name)</label>
+      <input type="text" id="umName">
+    </div>
+    <div class="field">
+      <label>විද්‍යුත් තැපෑල (Email)</label>
+      <input type="email" id="umEmail">
+    </div>
+    <div class="field">
+      <label>මුරපදය (Temporary password, min 6 characters)</label>
+      <input type="password" id="umPassword">
+    </div>
+    <div class="field">
+      <label>භූමිකාව (Role)</label>
+      <select id="umRole">
+        <option value="staff">Staff</option>
+        <option value="admin">Admin</option>
+      </select>
+    </div>
+    <button class="auth-submit" id="btnUmCreate">නව පරිශීලකයෙකු එකතු කරන්න</button>
+    <button class="close-modal-btn" id="btnUmClose">වසන්න (Close)</button>
+  </div>
+</div>
+
 <!-- Firebase SDK (compat build — simplest to drop into a plain script tag app) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 
 <!-- Data storage: Firebase Firestore is the source of truth. Cases live in
      the "senCases" collection (one document per Case ID) so they sync
@@ -425,7 +550,9 @@
   };
   firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
+  const auth = firebase.auth();
   const casesCollection = db.collection('senCases');
+  const usersCollection = db.collection('users');
 
   // Fetch every saved case (used for the "all cases" search/filter list).
   async function loadCasesFromFirestore() {
@@ -2113,8 +2240,232 @@ async function deleteData(){
   overlay.addEventListener('click', (e)=>{ if(e.target === overlay) overlay.classList.remove('show'); });
 })();
 
-renderAll();
-fetchAllCases(); // warm the local case cache from Firestore in the background
+// NOTE: renderAll() / fetchAllCases() are now kicked off from the auth
+// module below, once a signed-in user with a known role is confirmed —
+// see initAppAfterAuth() in the AUTH / USER MANAGEMENT block.
+</script>
+
+<!-- ============ AUTH / USER MANAGEMENT LOGIC ============ -->
+<script>
+(function(){
+  const authGate = document.getElementById('authGate');
+  const loginView = document.getElementById('authLoginView');
+  const setupView = document.getElementById('authSetupView');
+  const loginError = document.getElementById('loginError');
+  const setupError = document.getElementById('setupError');
+  const appEl = document.querySelector('.app');
+  const currentUserLabel = document.getElementById('currentUserLabel');
+  const btnManageUsers = document.getElementById('btnManageUsers');
+  const btnDelete = document.getElementById('btnDelete');
+  const btnLogout = document.getElementById('btnLogout');
+
+  let appStarted = false;
+  let currentRole = null;
+
+  function showError(el, msg){ el.textContent = msg; el.classList.add('show'); }
+  function clearError(el){ el.textContent = ''; el.classList.remove('show'); }
+
+  // Decide whether to show the "sign in" form or the "create first admin"
+  // form, based on whether any user documents exist yet.
+  async function decideAuthView(){
+    try{
+      const snap = await usersCollection.limit(1).get();
+      if(snap.empty){
+        loginView.style.display = 'none';
+        setupView.style.display = '';
+      } else {
+        loginView.style.display = '';
+        setupView.style.display = 'none';
+      }
+    }catch(e){
+      console.error(e);
+      // Default to the login form if we can't tell (e.g. offline briefly).
+      loginView.style.display = '';
+      setupView.style.display = 'none';
+    }
+  }
+
+  async function initAppAfterAuth(user){
+    // Look up this user's role document (created either by the bootstrap
+    // admin-setup flow, or by an admin via the User Management panel).
+    let roleDoc = null;
+    try{
+      const doc = await usersCollection.doc(user.uid).get();
+      if(doc.exists) roleDoc = doc.data();
+    }catch(e){ console.error(e); }
+
+    if(!roleDoc){
+      // Signed in with Firebase Auth but no matching Firestore role doc —
+      // treat as not provisioned yet and block access rather than guessing.
+      showError(loginError, 'මෙම ගිණුමට කාර්යභාරයක් (role) පවරා නැත. Admin අමතන්න. (No role assigned to this account — contact your administrator.)');
+      auth.signOut();
+      return;
+    }
+
+    currentRole = roleDoc.role === 'admin' ? 'admin' : 'staff';
+    currentUserLabel.textContent = (roleDoc.name ? roleDoc.name + ' — ' : '') + user.email + ' (' + currentRole + ')';
+    btnManageUsers.style.display = currentRole === 'admin' ? '' : 'none';
+    btnDelete.style.display = currentRole === 'admin' ? '' : 'none';
+
+    authGate.classList.add('hidden');
+    appEl.style.display = '';
+
+    if(!appStarted){
+      appStarted = true;
+      renderAll();
+      fetchAllCases();
+    }
+  }
+
+  auth.onAuthStateChanged(function(user){
+    if(user){
+      initAppAfterAuth(user);
+    } else {
+      appEl.style.display = 'none';
+      authGate.classList.remove('hidden');
+      clearError(loginError);
+      clearError(setupError);
+      decideAuthView();
+    }
+  });
+
+  // ---- Sign in ----
+  document.getElementById('btnLoginSubmit').addEventListener('click', async function(){
+    clearError(loginError);
+    const email = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    if(!email || !password){ showError(loginError, 'Email සහ Password දෙකම ඇතුළත් කරන්න.'); return; }
+    this.disabled = true;
+    try{
+      await auth.signInWithEmailAndPassword(email, password);
+    }catch(e){
+      showError(loginError, 'පිවිසීම අසාර්ථකයි: ' + (e.message || e.code));
+    }finally{
+      this.disabled = false;
+    }
+  });
+
+  // ---- First-time admin bootstrap ----
+  document.getElementById('btnSetupSubmit').addEventListener('click', async function(){
+    clearError(setupError);
+    const name = document.getElementById('setupName').value.trim();
+    const email = document.getElementById('setupEmail').value.trim();
+    const password = document.getElementById('setupPassword').value;
+    if(!name || !email || !password){ showError(setupError, 'සියලුම ක්ෂේත්‍ර පුරවන්න.'); return; }
+    if(password.length < 6){ showError(setupError, 'Password අවම වශයෙන් අකුරු 6ක් විය යුතුය.'); return; }
+    this.disabled = true;
+    try{
+      // Double-check no admin was created by someone else in the meantime.
+      const snap = await usersCollection.limit(1).get();
+      if(!snap.empty){
+        showError(setupError, 'Admin ගිණුමක් දැනටමත් සාදා ඇත. පිටුව නැවත load කරන්න.');
+        this.disabled = false;
+        return;
+      }
+      const cred = await auth.createUserWithEmailAndPassword(email, password);
+      await usersCollection.doc(cred.user.uid).set({
+        name: name,
+        email: email,
+        role: 'admin',
+        createdAt: new Date().toISOString()
+      });
+      // onAuthStateChanged will pick this up and start the app.
+    }catch(e){
+      showError(setupError, 'ගිණුම සෑදීම අසාර්ථකයි: ' + (e.message || e.code));
+      this.disabled = false;
+    }
+  });
+
+  // Allow Enter key to submit either form.
+  ['loginPassword'].forEach(id=>{
+    document.getElementById(id).addEventListener('keydown', e=>{
+      if(e.key === 'Enter') document.getElementById('btnLoginSubmit').click();
+    });
+  });
+  ['setupPassword'].forEach(id=>{
+    document.getElementById(id).addEventListener('keydown', e=>{
+      if(e.key === 'Enter') document.getElementById('btnSetupSubmit').click();
+    });
+  });
+
+  // ---- Logout ----
+  btnLogout.addEventListener('click', function(){
+    auth.signOut();
+  });
+
+  // ---- Admin: User Management panel ----
+  const umOverlay = document.getElementById('umOverlay');
+  const umList = document.getElementById('umList');
+  const umError = document.getElementById('umError');
+
+  async function refreshUmList(){
+    umList.innerHTML = '<li>Loading…</li>';
+    try{
+      const snap = await usersCollection.get();
+      umList.innerHTML = '';
+      snap.forEach(doc=>{
+        const d = doc.data();
+        const li = document.createElement('li');
+        const roleClass = d.role === 'admin' ? 'role-badge admin' : 'role-badge';
+        li.innerHTML = '<span>' + (d.name ? d.name + ' — ' : '') + (d.email || doc.id) + '</span>'
+          + '<span class="' + roleClass + '">' + (d.role || 'staff') + '</span>';
+        umList.appendChild(li);
+      });
+      if(!snap.size) umList.innerHTML = '<li>No users found.</li>';
+    }catch(e){
+      console.error(e);
+      umList.innerHTML = '<li>Failed to load users.</li>';
+    }
+  }
+
+  btnManageUsers.addEventListener('click', function(){
+    if(currentRole !== 'admin') return;
+    clearError(umError);
+    umOverlay.classList.add('show');
+    refreshUmList();
+  });
+  document.getElementById('btnUmClose').addEventListener('click', function(){
+    umOverlay.classList.remove('show');
+  });
+  umOverlay.addEventListener('click', function(e){ if(e.target === umOverlay) umOverlay.classList.remove('show'); });
+
+  // Creating a user must not sign the current admin out. Firebase's client
+  // SDK signs in whatever account it just created, so we spin up a second,
+  // throwaway Firebase App instance purely to create the auth account,
+  // then sign that instance back out and discard it.
+  document.getElementById('btnUmCreate').addEventListener('click', async function(){
+    clearError(umError);
+    const name = document.getElementById('umName').value.trim();
+    const email = document.getElementById('umEmail').value.trim();
+    const password = document.getElementById('umPassword').value;
+    const role = document.getElementById('umRole').value;
+    if(!name || !email || !password){ showError(umError, 'සියලුම ක්ෂේත්‍ර පුරවන්න.'); return; }
+    if(password.length < 6){ showError(umError, 'Password අවම වශයෙන් අකුරු 6ක් විය යුතුය.'); return; }
+    this.disabled = true;
+    const secondaryApp = firebase.initializeApp(firebaseConfig, 'UserCreation-' + Date.now());
+    try{
+      const secondaryAuth = secondaryApp.auth();
+      const cred = await secondaryAuth.createUserWithEmailAndPassword(email, password);
+      await usersCollection.doc(cred.user.uid).set({
+        name: name,
+        email: email,
+        role: role,
+        createdAt: new Date().toISOString()
+      });
+      await secondaryAuth.signOut();
+      document.getElementById('umName').value = '';
+      document.getElementById('umEmail').value = '';
+      document.getElementById('umPassword').value = '';
+      refreshUmList();
+      showToast('පරිශීලකයා එකතු කරන ලදී — User created');
+    }catch(e){
+      showError(umError, 'User සෑදීම අසාර්ථකයි: ' + (e.message || e.code));
+    }finally{
+      try{ await secondaryApp.delete(); }catch(e){ /* ignore cleanup errors */ }
+      this.disabled = false;
+    }
+  });
+})();
 </script>
 </body>
 </html>
