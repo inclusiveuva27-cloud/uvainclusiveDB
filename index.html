@@ -171,6 +171,29 @@
     background:var(--paper-raised); border:1px solid var(--line); border-radius:10px;
     padding:26px 28px; margin-bottom:20px;
   }
+
+  /* ---------- Step navigation (Previous / Next) ---------- */
+  .step-nav{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    margin:10px 0 30px; padding:14px 16px; background:var(--paper-raised);
+    border:1px solid var(--line); border-radius:10px;
+  }
+  .step-btn{
+    display:flex; align-items:center; gap:7px; font-family:inherit; font-size:13px; font-weight:600;
+    padding:10px 16px; border-radius:7px; border:1px solid var(--line); background:#fff; color:var(--navy-deep);
+    cursor:pointer; transition:all .15s ease; max-width:42%;
+  }
+  .step-btn span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .step-btn:hover:not(:disabled){background:var(--amber-soft); border-color:var(--amber); transform:translateY(-1px);}
+  .step-btn.primary{background:var(--navy); border-color:var(--navy); color:#fff;}
+  .step-btn.primary:hover:not(:disabled){background:var(--navy-deep); border-color:var(--navy-deep);}
+  .step-btn:disabled{opacity:.35; cursor:not-allowed; transform:none;}
+  .step-btn svg{width:15px; height:15px; flex-shrink:0;}
+  .step-progress{font-family:'Space Mono',monospace; font-size:11.5px; color:var(--grey); white-space:nowrap;}
+  @media (max-width:600px){
+    .step-btn span{max-width:70px;}
+  }
+
   .grid2{display:grid; grid-template-columns:1fr 1fr; gap:16px 22px;}
   .field{display:flex; flex-direction:column; gap:5px;}
   .field label{font-size:12px; color:var(--grey); font-weight:600;}
@@ -1049,19 +1072,72 @@ function renderGauge(){
 }
 
 /* =========================================================
+   STEP NAVIGATION (Previous / Next — easy page-to-page movement)
+   ========================================================= */
+function getFlowOrder(){
+  const flow = [{code:'student', label:'ශිෂ්‍ය තොරතුරු'}];
+  SECTIONS.forEach(s=> flow.push({code:s.code, label:s.title}));
+  flow.push({code:'summary', label:'සාරාංශය හා නිර්දේශ'});
+  const schedMap = { sched05:SCHED05, sched06:SCHED06, sched07:SCHED07, sched08:SCHED08 };
+  SCHED_PICKLIST.filter(item => state.selectedScheds[item.key]).forEach(item=>{
+    flow.push({code:item.key, label:item.label});
+  });
+  return flow;
+}
+
+function buildStepNav(code){
+  const flow = getFlowOrder();
+  const idx = flow.findIndex(f=>f.code===code);
+  if(idx === -1) return '';
+  const prev = flow[idx-1];
+  const next = flow[idx+1];
+  return `
+  <div class="step-nav">
+    <button class="step-btn" id="stepPrevBtn" ${prev?'':'disabled'}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+      <span>${prev ? prev.label : ''}</span>
+    </button>
+    <span class="step-progress">${idx+1} / ${flow.length}</span>
+    <button class="step-btn primary" id="stepNextBtn" ${next?'':'disabled'}>
+      <span>${next ? next.label : ''}</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+    </button>
+  </div>`;
+}
+
+function bindStepNav(){
+  const flow = getFlowOrder();
+  const idx = flow.findIndex(f=>f.code===currentView);
+  const prevBtn = document.getElementById('stepPrevBtn');
+  const nextBtn = document.getElementById('stepNextBtn');
+  if(prevBtn) prevBtn.addEventListener('click', ()=>{
+    if(idx>0){ currentView = flow[idx-1].code; renderAll(); window.scrollTo({top:0, behavior:'smooth'}); }
+  });
+  if(nextBtn) nextBtn.addEventListener('click', ()=>{
+    if(idx<flow.length-1){ currentView = flow[idx+1].code; renderAll(); window.scrollTo({top:0, behavior:'smooth'}); }
+  });
+}
+
+/* =========================================================
    RENDER: MAIN VIEWS
    ========================================================= */
 function renderMain(){
   const main = document.getElementById('mainArea');
-  if(currentView === 'student'){ main.innerHTML = viewStudent(); bindStudent(); }
-  else if(currentView === 'summary'){ main.innerHTML = viewSummary(); bindSummary(); }
-  else if(currentView === 'cases'){ main.innerHTML = viewCases(); bindCases(); }
-  else if(currentView === 'cleanup'){ main.innerHTML = viewCleanup(); bindCleanup(); }
-  else if(currentView === 'sched05'){ main.innerHTML = viewSchedForm(SCHED05); bindSchedForm(SCHED05); }
-  else if(currentView === 'sched06'){ main.innerHTML = viewSchedForm(SCHED06); bindSchedForm(SCHED06); }
-  else if(currentView === 'sched07'){ main.innerHTML = viewSchedForm(SCHED07); bindSchedForm(SCHED07); }
-  else if(currentView === 'sched08'){ main.innerHTML = viewSchedForm(SCHED08); bindSchedForm(SCHED08); }
-  else { main.innerHTML = viewSection(currentView); bindSection(currentView); }
+  let content = '', bindFn = ()=>{};
+  if(currentView === 'student'){ content = viewStudent(); bindFn = bindStudent; }
+  else if(currentView === 'summary'){ content = viewSummary(); bindFn = bindSummary; }
+  else if(currentView === 'cases'){ content = viewCases(); bindFn = bindCases; }
+  else if(currentView === 'cleanup'){ content = viewCleanup(); bindFn = bindCleanup; }
+  else if(currentView === 'sched05'){ content = viewSchedForm(SCHED05); bindFn = ()=>bindSchedForm(SCHED05); }
+  else if(currentView === 'sched06'){ content = viewSchedForm(SCHED06); bindFn = ()=>bindSchedForm(SCHED06); }
+  else if(currentView === 'sched07'){ content = viewSchedForm(SCHED07); bindFn = ()=>bindSchedForm(SCHED07); }
+  else if(currentView === 'sched08'){ content = viewSchedForm(SCHED08); bindFn = ()=>bindSchedForm(SCHED08); }
+  else { content = viewSection(currentView); bindFn = ()=>bindSection(currentView); }
+
+  const stepNavHtml = buildStepNav(currentView);
+  main.innerHTML = content + stepNavHtml;
+  bindFn();
+  if(stepNavHtml) bindStepNav();
 }
 
 function viewStudent(){
