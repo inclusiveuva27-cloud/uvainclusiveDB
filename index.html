@@ -601,6 +601,7 @@
 <!-- PDF report generation -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 <script>
 /* =========================================================
@@ -1591,6 +1592,8 @@ function viewCases(){
       <button class="filter-reset" id="cf_reset">Reset</button>
       <button class="filter-reset" id="cf_refresh">↻ Refresh</button>
       <button class="filter-reset" id="cf_cleanup" style="border-color:var(--red); color:var(--red);">🧹 Find duplicate drafts</button>
+      <button class="filter-reset" id="cf_export_xlsx" style="border-color:#1b7a3d; color:#1b7a3d;">⬇ Excel</button>
+      <button class="filter-reset" id="cf_export_pdf" style="border-color:#1b3d8f; color:#1b3d8f;">⬇ PDF</button>
     </div>
     <div class="case-count">${casesLoaded ? results.length + ' of ' + allCases.length + ' cases' : ''}</div>
     ${table}
@@ -1741,6 +1744,10 @@ function bindCases(){
   if(refresh) refresh.addEventListener('click', ()=>{ casesLoaded = false; fetchAllCases(); });
   const cleanup = document.getElementById('cf_cleanup');
   if(cleanup) cleanup.addEventListener('click', ()=>{ currentView = 'cleanup'; renderAll(); });
+  const exportXlsx = document.getElementById('cf_export_xlsx');
+  const exportPdf = document.getElementById('cf_export_pdf');
+  if(exportXlsx) exportXlsx.addEventListener('click', exportCasesToExcel);
+  if(exportPdf) exportPdf.addEventListener('click', exportCasesToPDF);
 
   document.querySelectorAll('.case-table tbody tr').forEach(tr=>{
     tr.addEventListener('click', ()=>{
@@ -2135,6 +2142,119 @@ async function generateReportPDF(){
     const rawName = (state.student && state.student.name) ? state.student.name : 'assessment';
     const safeName = rawName.toString().trim().replace(/\s+/g,'-').replace(/[^\w\u0D80-\u0DFF-]/g,'') || 'assessment';
     pdf.save(safeName + '-report.pdf');
+    showToast('PDF බාගත විය — Report downloaded');
+  }catch(e){
+    if(container.parentNode) document.body.removeChild(container);
+    showToast('Report generation failed.');
+    console.error(e);
+  }
+}
+
+/* =========================================================
+   BULK EXPORT: ALL / FILTERED CASES -> EXCEL & PDF
+   (used from the "වාර්තා සොයන්න — Find Reports" screen)
+   ========================================================= */
+function buildCasesExportRows(){
+  return filteredCases().map(c=>{
+    const st = c.student || {};
+    const pct = casePct(c);
+    const sc = caseScore(c);
+    return {
+      'Case ID': c.id || '',
+      'නම (Name)': st.name || '',
+      'පාසල (School)': st.school || '',
+      'කලාපය (Zone)': st.zone || '',
+      'පළාත (Province)': st.province || '',
+      'ශ්‍රේණිය (Grade)': st.grade || '',
+      'ස්ත්‍රී/පුරුෂ (Gender)': st.gender || '',
+      'උපන් දිනය (DOB)': st.dob || '',
+      'මව/පියා/භාරකරු (Guardian)': st.p_name || '',
+      'දුරකථනය (Phone)': st.p_phone || '',
+      'ලකුණු (Score)': sc,
+      'උපරිම (Max)': GRAND_MAX,
+      'ප්‍රතිශතය % (Percent)': pct,
+      'තත්ත්වය (Status)': pct >= 100 ? 'සම්පූර්ණයි' : 'අසම්පූර්ණයි'
+    };
+  });
+}
+
+function exportCasesToExcel(){
+  if(typeof XLSX === 'undefined'){
+    showToast('Excel library failed to load — check your internet connection.');
+    return;
+  }
+  const rows = buildCasesExportRows();
+  if(!rows.length){ showToast('අපනයනය කිරීමට වාර්තා නොමැත — No cases to export.'); return; }
+  try{
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = Object.keys(rows[0]).map(()=>({ wch: 20 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Cases');
+    const stamp = new Date().toISOString().slice(0,10);
+    XLSX.writeFile(wb, `sen-cases-${stamp}.xlsx`);
+    showToast('Excel බාගත විය — Excel downloaded');
+  }catch(e){
+    console.error(e);
+    showToast('Excel export failed.');
+  }
+}
+
+async function exportCasesToPDF(){
+  if(typeof html2canvas === 'undefined' || typeof window.jspdf === 'undefined'){
+    showToast('PDF libraries failed to load — check your internet connection.');
+    return;
+  }
+  const rows = buildCasesExportRows();
+  if(!rows.length){ showToast('අපනයනය කිරීමට වාර්තා නොමැත — No cases to export.'); return; }
+  showToast('වාර්තාව සකසමින්... Generating report...');
+
+  const cols = Object.keys(rows[0]);
+  const escapeHtml = (v)=> String(v===undefined || v===null ? '' : v)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const theadCells = cols.map(c=>`<th style="border:1px solid #ccc; padding:5px 7px; font-size:10px; background:#eef2fb; text-align:left; white-space:nowrap;">${escapeHtml(c)}</th>`).join('');
+  const bodyRows = rows.map(r=>`<tr>${cols.map(c=>`<td style="border:1px solid #ccc; padding:5px 7px; font-size:10px; white-space:nowrap;">${escapeHtml(r[c])}</td>`).join('')}</tr>`).join('');
+
+  const html = `
+    <div style="font-family:'Noto Sans Sinhala','Inter',sans-serif;">
+      <h1 style="font-size:18px; color:#1b3d8f; margin:0 0 4px;">සියලු වාර්තා — All Cases Report</h1>
+      <div style="font-size:11px; color:#555; margin-bottom:14px;">Generated ${new Date().toLocaleString()} — ${rows.length} case(s)</div>
+      <table style="border-collapse:collapse; width:100%;">
+        <thead><tr>${theadCells}</tr></thead>
+        <tbody>${bodyRows}</tbody>
+      </table>
+    </div>`;
+
+  const container = document.createElement('div');
+  container.style.cssText = 'position:fixed; left:-9999px; top:0; width:1400px; background:#ffffff; padding:24px;';
+  container.innerHTML = html;
+  document.body.appendChild(container);
+  await new Promise(r => setTimeout(r, 250));
+
+  try{
+    const canvas = await html2canvas(container, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+    document.body.removeChild(container);
+
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF('l', 'pt', 'a3');
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const imgW = pageW;
+    const imgH = (canvas.height * imgW) / canvas.width;
+    const imgData = canvas.toDataURL('image/jpeg', 0.92);
+
+    let heightLeft = imgH;
+    let position = 0;
+    pdf.addImage(imgData, 'JPEG', 0, position, imgW, imgH);
+    heightLeft -= pageH;
+    while(heightLeft > 0){
+      position = heightLeft - imgH;
+      pdf.addPage();
+      pdf.addImage(imgData, 'JPEG', 0, position, imgW, imgH);
+      heightLeft -= pageH;
+    }
+
+    const stamp = new Date().toISOString().slice(0,10);
+    pdf.save(`sen-cases-${stamp}.pdf`);
     showToast('PDF බාගත විය — Report downloaded');
   }catch(e){
     if(container.parentNode) document.body.removeChild(container);
