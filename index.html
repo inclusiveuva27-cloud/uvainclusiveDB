@@ -2683,7 +2683,9 @@ async function deleteData(){
     var r = t;
     if(SI.test(t)){
       var m = t.length > 3000 ? null : sp(t), core = m ? m[1] : '';
+      var pt = m ? m[2].replace(/\s+$/, '') : '';
       if(core && TA[core] !== undefined) r = m[0] + TA[core] + m[2];
+      else if(core && pt && TA[core + pt] !== undefined) r = m[0] + TA[core + pt] + m[2].slice(pt.length);
       else if(t.length <= 3000) r = t.replace(DWRe, function(k){ return DW[k]; });
     }
     if(cache.size > 4000) cache.clear();
